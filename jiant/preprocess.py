@@ -41,6 +41,7 @@ from transformers import (
     GPT2Tokenizer,
     TransfoXLTokenizer,
     XLMTokenizer,
+    XLMRobertaTokenizer
 )
 
 from jiant.tasks import (
@@ -268,8 +269,9 @@ def _build_vocab(args: config.Params, tasks: List[Task], vocab_path: str):
         # Add pre-computed vocabulary of corresponding tokenizer for transformers models.
         add_transformers_vocab(vocab, args.tokenizer)
 
-    vocab.save_to_files(vocab_path)
-    log.info("\tSaved vocab to %s", vocab_path)
+    #vocab.save_to_files(vocab_path)
+    return vocab
+    #log.info("\tSaved vocab to %s", vocab_path)
     #  del word2freq, char2freq, target2freq
 
 
@@ -350,12 +352,14 @@ def build_tasks(
     indexers = build_indexers(args)
 
     vocab_path = os.path.join(args.exp_dir, "vocab")
-    if args.reload_vocab or not os.path.exists(vocab_path):
-        _build_vocab(args, tasks, vocab_path)
+    log.info('In building vocab')
+    log.info(args.exp_dir)
+    #if args.reload_vocab or not os.path.exists(vocab_path):
+    vocab = _build_vocab(args, tasks, vocab_path)
 
     # Always load vocab from file.
-    vocab = Vocabulary.from_files(vocab_path)
-    log.info("\tLoaded vocab from %s", vocab_path)
+    #vocab = Vocabulary.from_files(vocab_path)
+    #log.info("\tLoaded vocab from %s", vocab_path)
 
     for namespace, mapping in vocab._index_to_token.items():
         log.info("\tVocab namespace %s: size %d", namespace, len(mapping))
@@ -676,10 +680,11 @@ def add_transformers_vocab(vocab, tokenizer_name):
     anything special, so we can just use the standard indexers.
     """
     do_lower_case = "uncased" in tokenizer_name
-
-    if tokenizer_name.startswith("bert-"):
+    log.info('In add_transformers_vocab')
+    log.info(tokenizer_name)
+    if tokenizer_name.startswith("bert-") or 'rubert' in tokenizer_name or '/bert-' in tokenizer_name:
         tokenizer = BertTokenizer.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
-    elif tokenizer_name.startswith("roberta-"):
+    elif tokenizer_name.startswith("roberta-"):# or 'roberta' in tokenizer_name:
         tokenizer = RobertaTokenizer.from_pretrained(tokenizer_name)
     elif tokenizer_name.startswith("albert-"):
         tokenizer = AlbertTokenizer.from_pretrained(tokenizer_name)
@@ -687,10 +692,12 @@ def add_transformers_vocab(vocab, tokenizer_name):
         tokenizer = XLNetTokenizer.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
     elif tokenizer_name.startswith("openai-gpt"):
         tokenizer = OpenAIGPTTokenizer.from_pretrained(tokenizer_name)
-    elif tokenizer_name.startswith("gpt2"):
+    elif tokenizer_name.startswith("gpt2") or 'gpt' in tokenizer_name:
         tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_name)
     elif tokenizer_name.startswith("transfo-xl-"):
         tokenizer = TransfoXLTokenizer.from_pretrained(tokenizer_name)
+    elif tokenizer_name.startswith("xlm-roberta"):
+        tokenizer = XLMRobertaTokenizer.from_pretrained(tokenizer_name)
     elif tokenizer_name.startswith("xlm-"):
         tokenizer = XLMTokenizer.from_pretrained(tokenizer_name)
 
@@ -743,8 +750,8 @@ class ModelPreprocessingInterface(object):
     def __init__(self, args):
         boundary_token_fn = None
         lm_boundary_token_fn = None
-
-        if args.input_module.startswith("bert-"):
+        log.info('in mpi')
+        if args.input_module.startswith("bert-") or 'rubert' in args.input_module or '/bert-' in args.input_module:
             from jiant.huggingface_transformers_interface.modules import BertEmbedderModule
 
             boundary_token_fn = BertEmbedderModule.apply_boundary_tokens
@@ -765,7 +772,7 @@ class ModelPreprocessingInterface(object):
 
             boundary_token_fn = OpenAIGPTEmbedderModule.apply_boundary_tokens
             lm_boundary_token_fn = OpenAIGPTEmbedderModule.apply_lm_boundary_tokens
-        elif args.input_module.startswith("gpt2"):
+        elif args.input_module.startswith("gpt2") or 'gpt' in args.input_module:
             from jiant.huggingface_transformers_interface.modules import GPT2EmbedderModule
 
             boundary_token_fn = GPT2EmbedderModule.apply_boundary_tokens

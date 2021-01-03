@@ -80,6 +80,7 @@ class Classifier(nn.Module):
         self.classifier = classifier
 
     def forward(self, seq_emb):
+        #log.info(seq_emd.size())
         logits = self.classifier(seq_emb)
         return logits
 

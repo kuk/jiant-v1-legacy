@@ -1674,8 +1674,8 @@ class GLUEDiagnosticTask(PairClassificationTask):
 
 
 # SuperGLUE diagnostic (2-class NLI), expects JSONL
-@register_task("broadcoverage-diagnostic", rel_path="RTE/diagnostics")
-class BroadCoverageDiagnosticTask(GLUEDiagnosticTask):
+@register_task("lidirus", rel_path="LiDiRus")
+class LiDiRusTask(GLUEDiagnosticTask):
     """ Class for SuperGLUE broad coverage (linguistics, commonsense, world knowledge)
         diagnostic task """
 
@@ -1724,7 +1724,7 @@ class BroadCoverageDiagnosticTask(GLUEDiagnosticTask):
                 setattr(self, "scorer__%s__%s" % (tag_group, tag), scorer(arg_to_scorer))
 
         targ_map = {"entailment": 1, "not_entailment": 0}
-        data = [json.loads(d) for d in open(os.path.join(self.path, "AX-b.jsonl"))]
+        data = [json.loads(d) for d in open(os.path.join(self.path, "LiDiRus.jsonl"))]
         sent1s = [
             tokenize_and_truncate(self._tokenizer_name, d["sentence1"], self.max_seq_len)
             for d in data
@@ -1774,7 +1774,7 @@ class BroadCoverageDiagnosticTask(GLUEDiagnosticTask):
         self.val_data_text = self.train_data_text
         self.test_data_text = self.train_data_text
         self.sentences = self.train_data_text[0] + self.train_data_text[1]
-        log.info("\tFinished loading diagnostic data.")
+        log.info("\tFinished loading LiDiRus data.")
 
         # TODO: use FastMatthews instead to save memory.
         create_score_function(Correlation, "matthews", self.ix_to_lex_sem_dic, "lex_sem")
@@ -1926,8 +1926,8 @@ class RTETask(PairClassificationTask):
         log.info("\tFinished loading RTE (from GLUE formatted data).")
 
 
-@register_task("rte-superglue", rel_path="RTE/")
-class RTESuperGLUETask(RTETask):
+@register_task("terra", rel_path="TERRa/")
+class TERRaSuperGLUETask(RTETask):
     """ Task class for Recognizing Textual Entailment 1, 2, 3, 5
     Uses JSONL format used by SuperGLUE"""
 
@@ -1964,7 +1964,7 @@ class RTESuperGLUETask(RTETask):
             + self.val_data_text[0]
             + self.val_data_text[1]
         )
-        log.info("\tFinished loading RTE (from SuperGLUE formatted data).")
+        log.info("\tFinished loading TERRa.")
 
 
 @register_task("qnli", rel_path="QNLI/")
@@ -2612,12 +2612,30 @@ class SpanClassificationTask(Task):
     def _make_span_field(self, s, text_field, offset=1):
         # AllenNLP span extractor expects inclusive span indices
         # so minus 1 at the end index.
-        return SpanField(s[0] + offset, s[1] - 1 + offset, text_field)
+        try:
+            return SpanField(s[0] + offset, s[1] - 1 + offset, text_field)
+        except:
+            span_end = len(text_field)-1
+            span_start = s[0] + offset
+            if span_start >= span_end:
+                span_start = span_end -1
+            #log.info('!&!&!')
+            #log.info(len(text_field))
+            return SpanField(span_start, span_end, text_field)
 
     def make_instance(self, record, idx, indexers, model_preprocessing_interface) -> Type[Instance]:
         """Convert a single record to an AllenNLP Instance."""
+        #tokens = record["text"].encode('utf-8').decode('utf-8').split()
         tokens = record["text"].split()
+        ##Search
+        #ast.literal_eval('ekkjk')
+        #log.info('!!!')
+        #log.info(model_preprocessing_interface.boundary_token_fn(tokens, get_offset=True))
+        #ast.literal_eval('ekkjk')
+        #try:
         tokens, offset = model_preprocessing_interface.boundary_token_fn(tokens, get_offset=True)
+        #except:
+        #    tokens, offset, _ = model_preprocessing_interface.boundary_token_fn(tokens, get_offset=True)
         text_field = sentence_to_text_field(tokens, indexers)
 
         example = {}
@@ -2671,11 +2689,8 @@ class SpanClassificationTask(Task):
             scorer(logits, labels)
 
 
-@register_task("commitbank", rel_path="CB/")
-class CommitmentTask(PairClassificationTask):
-    """ NLI-formatted task detecting speaker commitment.
-    Data and more info at github.com/mcdm/CommitmentBank/
-    Paper forthcoming. """
+@register_task("rcb", rel_path="RCB/")
+class RCBTask(PairClassificationTask):
 
     def __init__(self, path, max_seq_len, name, **kw):
         """ We use three F1 trackers, one for each class to compute multi-class F1 """
@@ -2729,7 +2744,7 @@ class CommitmentTask(PairClassificationTask):
             + self.val_data_text[1]
         )
 
-        log.info("\tFinished loading CommitmentBank data.")
+        log.info("\tFinished loading RCB data.")
 
     def get_metrics(self, reset=False):
         """Get metrics specific to the task.
@@ -2746,8 +2761,8 @@ class CommitmentTask(PairClassificationTask):
         return {"accuracy": acc, "f1": f1, "precision": pcs, "recall": rcl}
 
 
-@register_task("wic", rel_path="WiC/")
-class WiCTask(PairClassificationTask):
+@register_task("russe", rel_path="RUSSE/")
+class RUSSETask(PairClassificationTask):
     """ Task class for Words in Context. """
 
     def __init__(self, path, max_seq_len, name, **kw):
@@ -2803,11 +2818,6 @@ class WiCTask(PairClassificationTask):
                     trg = trg_map[row["label"]] if "label" in row else 0
                     trgs.append(trg)
                     idxs.append(row["idx"])
-                    assert (
-                        "version" in row and row["version"] == 1.1
-                    ), "WiC version is not v1.1; examples indices are likely incorrect and data "
-                    "is likely pre-tokenized. Please re-download the data from "
-                    "super.gluebenchmark.com."
                 return [sents1, sents2, idxs1, idxs2, trgs, idxs]
 
         self.train_data_text = _load_split(os.path.join(self.path, "train.jsonl"))
@@ -2819,7 +2829,7 @@ class WiCTask(PairClassificationTask):
             + self.val_data_text[0]
             + self.val_data_text[1]
         )
-        log.info("\tFinished loading WiC data.")
+        log.info("\tFinished loading RUSSE data.")
 
     def process_split(self, split, indexers, model_preprocessing_interface):
         """
@@ -3060,8 +3070,8 @@ class SpanPredictionTask(Task):
         return preds
 
 
-@register_task("copa", rel_path="COPA/")
-class COPATask(MultipleChoiceTask):
+@register_task("parus", rel_path="PARus/")
+class PARusTask(MultipleChoiceTask):
     """ Task class for Choice of Plausible Alternatives Task.  """
 
     def __init__(self, path, max_seq_len, name, **kw):
@@ -3084,16 +3094,16 @@ class COPATask(MultipleChoiceTask):
 
         def _load_split(data_file):
             contexts, questions, choicess, targs = [], [], [], []
-            data = [json.loads(l) for l in open(data_file, encoding="utf-8")]
+            data = [json.loads(l) for l in open(data_file, encoding="utf-8-sig")]
             for example in data:
                 context = example["premise"]
                 choice1 = example["choice1"]
                 choice2 = example["choice2"]
                 question = example["question"]
                 question = (
-                    "What was the cause of this?"
+                    "Что было причиной этого?"#"What was the cause of this?"
                     if question == "cause"
-                    else "What happened as a result?"
+                    else "Что произошло в результате?"
                 )
                 choices = [
                     tokenize_and_truncate(self._tokenizer_name, choice, self.max_seq_len)
@@ -3119,7 +3129,7 @@ class COPATask(MultipleChoiceTask):
             + [choice for choices in self.train_data_text[1] for choice in choices]
             + [choice for choices in self.val_data_text[1] for choice in choices]
         )
-        log.info("\tFinished loading COPA (as QA) data.")
+        log.info("\tFinished loading PARus (as QA) data.")
 
     def process_split(
         self, split, indexers, model_preprocessing_interface
@@ -3332,8 +3342,8 @@ class HellaSwagTask(MultipleChoiceTask):
         return {"accuracy": acc}
 
 
-@register_task("winograd-coreference", rel_path="WSC")
-class WinogradCoreferenceTask(SpanClassificationTask):
+@register_task("rwsd", rel_path="RWSD")
+class RWSDTask(SpanClassificationTask):
     def __init__(self, path, **kw):
         self._files_by_split = {"train": "train.jsonl", "val": "val.jsonl", "test": "test.jsonl"}
         self.num_spans = 2
@@ -3374,8 +3384,8 @@ class WinogradCoreferenceTask(SpanClassificationTask):
         return collected_metrics
 
 
-@register_task("boolq", rel_path="BoolQ")
-class BooleanQuestionTask(PairClassificationTask):
+@register_task("danetqa", rel_path="DaNetQA")
+class DaNetQATask(PairClassificationTask):
     """Task class for Boolean Questions Task."""
 
     def __init__(self, path, max_seq_len, name, **kw):
@@ -3418,7 +3428,7 @@ class BooleanQuestionTask(PairClassificationTask):
         self.sentences = [d["question"] for d in self.train_data_text + self.val_data_text] + [
             d["passage"] for d in self.train_data_text + self.val_data_text
         ]
-        log.info("\tFinished loading BoolQ data.")
+        log.info("\tFinished loading DaNetQA data.")
 
     def process_split(
         self, split, indexers, model_preprocessing_interface

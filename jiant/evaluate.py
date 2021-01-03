@@ -13,15 +13,15 @@ from allennlp.nn.util import move_to_device
 from allennlp.data.iterators import BasicIterator
 from jiant import tasks as tasks_module
 from jiant.tasks.tasks import (
-    BooleanQuestionTask,
-    CommitmentTask,
-    COPATask,
-    RTESuperGLUETask,
-    WiCTask,
-    WinogradCoreferenceTask,
+    DaNetQATask,
+    RCBTask,
+    PARusTask,
+    TERRaSuperGLUETask,
+    RUSSETask,
+    RWSDTask,
     GLUEDiagnosticTask,
 )
-from jiant.tasks.qa import MultiRCTask, ReCoRDTask, QASRLTask
+from jiant.tasks.qa import MuSeRCTask, RuCoSTask, QASRLTask
 from jiant.tasks.edge_probing import EdgeProbingTask
 from jiant.utils.utils import get_output_attribute
 
@@ -192,36 +192,36 @@ def write_preds(
         elif isinstance(task, EdgeProbingTask):
             # Edge probing tasks, have structured output.
             _write_edge_preds(task, preds_df, pred_dir, split_name)
-        elif isinstance(task, BooleanQuestionTask):
-            _write_boolq_preds(
+        elif isinstance(task, DaNetQATask):
+            _write_danetqa_preds(
                 task, preds_df, pred_dir, split_name, strict_glue_format=strict_glue_format
             )
-        elif isinstance(task, CommitmentTask):
-            _write_commitment_preds(
+        elif isinstance(task, RCBTask):
+            _write_rcb_preds(
                 task, preds_df, pred_dir, split_name, strict_glue_format=strict_glue_format
             )
-        elif isinstance(task, COPATask):
-            _write_copa_preds(
+        elif isinstance(task, PARusTask):
+            _write_parus_preds(
                 task, preds_df, pred_dir, split_name, strict_glue_format=strict_glue_format
             )
-        elif isinstance(task, MultiRCTask):
-            _write_multirc_preds(
+        elif isinstance(task, MuSeRCTask):
+            _write_muserc_preds(
                 task, preds_df, pred_dir, split_name, strict_glue_format=strict_glue_format
             )
-        elif isinstance(task, RTESuperGLUETask):
-            _write_rte_preds(
+        elif isinstance(task, TERRaSuperGLUETask):
+            _write_terra_preds(
                 task, preds_df, pred_dir, split_name, strict_glue_format=strict_glue_format
             )
-        elif isinstance(task, ReCoRDTask):
-            _write_record_preds(
+        elif isinstance(task, RuCoSTask):
+            _write_rucos_preds(
                 task, preds_df, pred_dir, split_name, strict_glue_format=strict_glue_format
             )
-        elif isinstance(task, WiCTask):
-            _write_wic_preds(
+        elif isinstance(task, RUSSETask):
+            _write_russe_preds(
                 task, preds_df, pred_dir, split_name, strict_glue_format=strict_glue_format
             )
-        elif isinstance(task, WinogradCoreferenceTask):
-            _write_winograd_preds(
+        elif isinstance(task, RWSDTask):
+            _write_rwsd_preds(
                 task, preds_df, pred_dir, split_name, strict_glue_format=strict_glue_format
             )
         elif isinstance(task, GLUEDiagnosticTask):
@@ -240,49 +240,28 @@ def write_preds(
     return
 
 
-# Exact file names per task required by the GLUE evaluation server
-GLUE_NAME_MAP = {
-    "cola": "CoLA",
-    "glue-diagnostic": "AX",
-    "mnli-mm": "MNLI-mm",
-    "mnli-m": "MNLI-m",
-    "mrpc": "MRPC",
-    "qnli": "QNLI",
-    "qqp": "QQP",
-    "rte": "RTE",
-    "sst": "SST-2",
-    "sts-b": "STS-B",
-    "wnli": "WNLI",
-}
+
 
 # Exact file names per task required by the SuperGLUE evaluation server
 SUPERGLUE_NAME_MAP = {
-    "boolq": "BoolQ",
-    "commitbank": "CB",
-    "copa": "COPA",
-    "multirc": "MultiRC",
-    "record": "ReCoRD",
-    "rte-superglue": "RTE",
-    "wic": "WiC",
-    "winograd-coreference": "WSC",
-    "broadcoverage-diagnostic": "AX-b",
-    "winogender-diagnostic": "AX-g",
+    "danetqa": "DaNetQA",
+    "rcb": "RCB",
+    "parus": "PARus",
+    "muserc": "MuSeRC",
+    "rucos": "RuCoS",
+    "terra": "TERRa",
+    "russe": "RUSSE",
+    "rwsd": "RWSD",
+    "lidirus": "LiDiRus",
 }
 
 
 def _get_pred_filename(task_name, pred_dir, split_name, strict_glue_format):
-    if strict_glue_format and task_name in GLUE_NAME_MAP:
-        if split_name == "test":
-            file = "%s.tsv" % (GLUE_NAME_MAP[task_name])
-        else:
-            file = "%s_%s.tsv" % (GLUE_NAME_MAP[task_name], split_name)
-    elif strict_glue_format and task_name in SUPERGLUE_NAME_MAP:
-        if split_name == "test":
-            file = "%s.jsonl" % (SUPERGLUE_NAME_MAP[task_name])
-        else:
-            file = "%s_%s.jsonl" % (SUPERGLUE_NAME_MAP[task_name], split_name)
+    if split_name == "test":
+        file = "%s.jsonl" % (SUPERGLUE_NAME_MAP[task_name])
     else:
-        file = "%s_%s.tsv" % (task_name, split_name)
+        file = "%s_%s.jsonl" % (SUPERGLUE_NAME_MAP[task_name], split_name)
+
     return os.path.join(pred_dir, file)
 
 
@@ -301,6 +280,8 @@ def _write_edge_preds(
 
     Predictions are saved as JSON with one record per line.
     """
+    log.info('!!!')
+    log.info(task.name)
     preds_file = os.path.join(pred_dir, f"{task.name}_{split_name}.json")
     # Each row of 'preds' is a NumPy object, need to convert to list for
     # serialization.
@@ -324,14 +305,14 @@ def _write_edge_preds(
             fd.write("\n")
 
 
-def _write_wic_preds(
+def _write_russe_preds(
     task: str,
     preds_df: pd.DataFrame,
     pred_dir: str,
     split_name: str,
     strict_glue_format: bool = False,
 ):
-    """ Write predictions for WiC task.  """
+    """ Write predictions for RUSSE task.  """
     pred_map = {0: "false", 1: "true"}
     preds_file = _get_pred_filename(task.name, pred_dir, split_name, strict_glue_format)
     with open(preds_file, "w", encoding="utf-8") as preds_fh:
@@ -343,7 +324,7 @@ def _write_wic_preds(
             preds_fh.write("{0}\n".format(json.dumps(out_d)))
 
 
-def _write_winograd_preds(
+def _write_rwsd_preds(
     task: str,
     preds_df: pd.DataFrame,
     pred_dir: str,
@@ -362,7 +343,7 @@ def _write_winograd_preds(
             preds_fh.write("{0}\n".format(json.dumps(out_d)))
 
 
-def _write_boolq_preds(
+def _write_danetqa_preds(
     task: str,
     preds_df: pd.DataFrame,
     pred_dir: str,
@@ -381,7 +362,7 @@ def _write_boolq_preds(
             preds_fh.write("{0}\n".format(json.dumps(out_d)))
 
 
-def _write_commitment_preds(
+def _write_rcb_preds(
     task: str,
     preds_df: pd.DataFrame,
     pred_dir: str,
@@ -400,10 +381,10 @@ def _write_commitment_preds(
             preds_fh.write("{0}\n".format(json.dumps(out_d)))
 
 
-def _write_copa_preds(
+def _write_parus_preds(
     task, preds_df: pd.DataFrame, pred_dir: str, split_name: str, strict_glue_format: bool = False
 ):
-    """ Write COPA predictions to JSONL """
+    """ Write PARus predictions to JSONL """
     preds_file = _get_pred_filename(task.name, pred_dir, split_name, strict_glue_format)
     with open(preds_file, "w", encoding="utf-8") as preds_fh:
         for row_idx, row in preds_df.iterrows():
@@ -414,14 +395,13 @@ def _write_copa_preds(
             preds_fh.write("{0}\n".format(json.dumps(out_d)))
 
 
-def _write_multirc_preds(
+def _write_muserc_preds(
     task: str,
     preds_df: pd.DataFrame,
     pred_dir: str,
     split_name: str,
     strict_glue_format: bool = False,
 ):
-    """ Write predictions for MultiRC task. """
     preds_file = _get_pred_filename(task.name, pred_dir, split_name, strict_glue_format)
     with open(preds_file, "w", encoding="utf-8") as preds_fh:
         if strict_glue_format:
@@ -442,7 +422,7 @@ def _write_multirc_preds(
                 preds_fh.write("{0}\n".format(json.dumps(out_d)))
 
 
-def _write_record_preds(
+def _write_rucos_preds(
     task: str,
     preds_df: pd.DataFrame,
     pred_dir: str,
@@ -480,7 +460,7 @@ def _write_record_preds(
                 preds_fh.write("{0}\n".format(json.dumps(out_d)))
 
 
-def _write_rte_preds(
+def _write_terra_preds(
     task: str,
     preds_df: pd.DataFrame,
     pred_dir: str,

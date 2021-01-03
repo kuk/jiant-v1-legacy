@@ -20,6 +20,7 @@ from transformers import (
     GPT2Tokenizer,
     TransfoXLTokenizer,
     XLMTokenizer,
+    XLMRobertaTokenizer,
 )
 
 
@@ -33,12 +34,14 @@ def select_tokenizer(args):
         Select a sane default tokenizer.
     """
     if args.tokenizer == "auto":
+        log.info('Selecting tokenizer')
         if input_module_uses_transformers(args.input_module):
             tokenizer_name = args.input_module
         else:
             tokenizer_name = "MosesTokenizer"
     else:
         tokenizer_name = args.tokenizer
+    log.info(tokenizer_name)
     return tokenizer_name
 
 
@@ -93,9 +96,12 @@ class MosesTokenizer(Tokenizer):
 @functools.lru_cache(maxsize=8, typed=False)
 def get_tokenizer(tokenizer_name):
     log.info(f"\tLoading Tokenizer {tokenizer_name}")
-    if tokenizer_name.startswith("bert-"):
+    if tokenizer_name.startswith("bert-") or 'rubert' in tokenizer_name or '/bert-' in tokenizer_name:
         do_lower_case = tokenizer_name.endswith("uncased")
         tokenizer = BertTokenizer.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
+        log.info('Rubert tokenizer has been chosen.')
+    elif tokenizer_name.startswith("xlm-roberta"):
+        tokenizer = XLMRobertaTokenizer.from_pretrained(tokenizer_name)        
     elif tokenizer_name.startswith("roberta-"):
         tokenizer = RobertaTokenizer.from_pretrained(tokenizer_name)
     elif tokenizer_name.startswith("albert-"):
@@ -105,7 +111,7 @@ def get_tokenizer(tokenizer_name):
         tokenizer = XLNetTokenizer.from_pretrained(tokenizer_name, do_lower_case=do_lower_case)
     elif tokenizer_name.startswith("openai-gpt"):
         tokenizer = OpenAIGPTTokenizer.from_pretrained(tokenizer_name)
-    elif tokenizer_name.startswith("gpt2"):
+    elif tokenizer_name.startswith("gpt2") or 'gpt' in tokenizer_name:
         tokenizer = GPT2Tokenizer.from_pretrained(tokenizer_name)
     elif tokenizer_name.startswith("transfo-xl-"):
         # TransformerXL is trained on data pretokenized with MosesTokenizer

@@ -23,6 +23,7 @@ from jiant.utils.tokenizers import get_tokenizer, Tokenizer
 from jiant.utils.utils import unescape_moses, transpose_list_of_lists
 
 
+
 # Tokenizer instance for internal use.
 _SIMPLE_TOKENIZER = SpaceTokenizer()
 _SEP = " "  # should match separator used by _SIMPLE_TOKENIZER
@@ -391,13 +392,13 @@ def get_aligner_fn(tokenizer_name: Text):
     """
     if tokenizer_name == "MosesTokenizer" or tokenizer_name.startswith("transfo-xl-"):
         return align_moses
-    elif tokenizer_name.startswith("bert-"):
+    elif tokenizer_name.startswith("bert-") or 'rubert' in tokenizer_name or '/bert-' in tokenizer_name:
         do_lower_case = tokenizer_name.endswith("uncased")
         wpm_tokenizer = get_tokenizer(tokenizer_name)
         return functools.partial(
             align_wpm, wpm_tokenizer=wpm_tokenizer, do_lower_case=do_lower_case
         )
-    elif tokenizer_name.startswith("openai-gpt") or tokenizer_name.startswith("xlm-mlm-en-"):
+    elif tokenizer_name.startswith("openai-gpt") or tokenizer_name.startswith("xlm-"):
         bpe_tokenizer = get_tokenizer(tokenizer_name)
         return functools.partial(align_bpe, bpe_tokenizer=bpe_tokenizer)
     elif tokenizer_name.startswith("xlnet-") or tokenizer_name.startswith("albert-"):
@@ -405,7 +406,10 @@ def get_aligner_fn(tokenizer_name: Text):
         return functools.partial(
             align_sentencepiece, sentencepiece_tokenizer=sentencepiece_tokenizer
         )
-    elif tokenizer_name.startswith("roberta-") or tokenizer_name.startswith("gpt2"):
+    #elif tokenizer_name.startswith("xlm-roberta-"):
+    #    bytebpe_tokenizer = get_tokenizer(tokenizer_name)
+    #    return functools.partial(align_bytebpe, bytebpe_tokenizer=bytebpe_tokenizer)
+    elif tokenizer_name.startswith("roberta-") or 'gpt' in tokenizer_name or tokenizer_name.startswith("xlm-"):
         bytebpe_tokenizer = get_tokenizer(tokenizer_name)
         return functools.partial(align_bytebpe, bytebpe_tokenizer=bytebpe_tokenizer)
     else:

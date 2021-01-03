@@ -457,7 +457,7 @@ def unescape_moses(moses_tokens):
 
 def load_json_data(filename: str) -> Iterable:
     """ Load JSON records, one per line. """
-    with open(filename, "r") as fd:
+    with open(filename, "r", encoding = 'utf-8') as fd:
         for line in fd:
             yield json.loads(line)
 

@@ -47,7 +47,7 @@ from jiant.huggingface_transformers_interface import input_module_uses_transform
 from jiant.tasks.edge_probing import EdgeProbingTask
 from jiant.tasks.lm import LanguageModelingTask
 from jiant.tasks.lm_parsing import LanguageModelingParsingTask
-from jiant.tasks.qa import MultiRCTask, ReCoRDTask
+from jiant.tasks.qa import MuSeRCTask,RuCoSTask
 from jiant.tasks.seq2seq import Seq2SeqTask
 from jiant.tasks.tasks import (
     GLUEDiagnosticTask,
@@ -62,7 +62,7 @@ from jiant.tasks.tasks import (
     SpanPredictionTask,
     STSBTask,
     TaggingTask,
-    WiCTask,
+    RUSSETask,
     MRPCTask,
     QQPTask,
 )
@@ -236,11 +236,17 @@ def build_model(args, vocab, pretrained_embs, tasks, cuda_devices):
 
     # Build embeddings.
     cove_layer = None
-    if args.input_module.startswith("bert-"):
+    if args.input_module.startswith("bert-") or 'rubert' in args.input_module or '/bert-' in args.input_module:
         from jiant.huggingface_transformers_interface.modules import BertEmbedderModule
 
         log.info(f"Using BERT model ({args.input_module}).")
         embedder = BertEmbedderModule(args)
+        d_emb = embedder.get_output_dim()
+    elif args.input_module.startswith("xlm-roberta-"):
+        from jiant.huggingface_transformers_interface.modules import XLMRobertaEmbedderModule
+
+        log.info(f"Using XLMRoBERTa model ({args.input_module}).")
+        embedder = XLMRobertaEmbedderModule(args)
         d_emb = embedder.get_output_dim()
     elif args.input_module.startswith("roberta-"):
         from jiant.huggingface_transformers_interface.modules import RobertaEmbedderModule
@@ -266,7 +272,7 @@ def build_model(args, vocab, pretrained_embs, tasks, cuda_devices):
         log.info(f"Using OpenAI GPT model ({args.input_module}).")
         embedder = OpenAIGPTEmbedderModule(args)
         d_emb = embedder.get_output_dim()
-    elif args.input_module.startswith("gpt2"):
+    elif args.input_module.startswith("gpt2") or 'gpt' in args.input_module:
         from jiant.huggingface_transformers_interface.modules import GPT2EmbedderModule
 
         log.info(f"Using GPT-2 model ({args.input_module}).")
@@ -278,11 +284,23 @@ def build_model(args, vocab, pretrained_embs, tasks, cuda_devices):
         log.info(f"Using Transformer-XL model ({args.input_module}).")
         embedder = TransfoXLEmbedderModule(args)
         d_emb = embedder.get_output_dim()
+    elif args.input_module.startswith("xlm-mlm"):
+        from jiant.huggingface_transformers_interface.modules import XLMMLMEmbedderModule
+
+        log.info(f"Using XLM MLM model ({args.input_module}).")
+        embedder = XLMMLMEmbedderModule(args)
+        d_emb = embedder.get_output_dim()
     elif args.input_module.startswith("xlm-"):
         from jiant.huggingface_transformers_interface.modules import XLMEmbedderModule
 
         log.info(f"Using XLM model ({args.input_module}).")
         embedder = XLMEmbedderModule(args)
+        d_emb = embedder.get_output_dim()
+    elif 'bert' in args.input_module:
+        from jiant.huggingface_transformers_interface.modules import BertEmbedderModule
+
+        log.info(f"Using BERT model ({args.input_module}).")
+        embedder = BertEmbedderModule(args)
         d_emb = embedder.get_output_dim()
     else:
         # Default case, used for ELMo, CoVe, word embeddings, etc.
@@ -334,7 +352,10 @@ def build_model(args, vocab, pretrained_embs, tasks, cuda_devices):
 
 def build_embeddings(args, vocab, tasks, pretrained_embs=None):
     """ Build embeddings according to options in args """
+    log.info('In build Embeddings')
+    log.info(args.d_char)
     d_emb, d_char = 0, args.d_char
+
 
     token_embedders = {}
     # Word embeddings
@@ -366,6 +387,7 @@ def build_embeddings(args, vocab, tasks, pretrained_embs=None):
         )
         token_embedders["words"] = embeddings
         d_emb += d_word
+
 
     # Handle cove
     cove_layer = None
@@ -408,10 +430,14 @@ def build_embeddings(args, vocab, tasks, pretrained_embs=None):
     else:
         log.info("\tNot using character embeddings!")
 
+
+    log.info(d_emb)
+    log.info("&*&")
     # If we want separate ELMo scalar weights (a different ELMo representation for each classifier,
     # then we need count and reliably map each classifier to an index used by
     # allennlp internal ELMo.
     if args.sep_embs_for_skip:
+        log.info('***')
         # Determine a deterministic list of classifier names to use for each
         # task.
         classifiers = sorted(set(map(lambda x: x._classifier_name, tasks)))
@@ -452,7 +478,10 @@ def build_embeddings(args, vocab, tasks, pretrained_embs=None):
         # Not used if input_module = elmo-chars-only (i.e. no elmo)
         loaded_classifiers = {"@pretrain@": 0}
         num_reps = 1
+    log.info(d_emb)
+    log.info('!*!')
     if args.input_module.startswith("elmo"):
+        log.info('Elmo is used')
         log.info("Loading ELMo from files:")
         log.info("ELMO_OPT_PATH = %s", ELMO_OPT_PATH)
         if args.input_module == "elmo-chars-only":
@@ -491,7 +520,7 @@ def build_embeddings(args, vocab, tasks, pretrained_embs=None):
         elmo_chars_only=args.input_module == "elmo-chars-only",
         sep_embs_for_skip=args.sep_embs_for_skip,
     )
-
+    log.info(d_emb)
     assert d_emb, "You turned off all the embeddings, ya goof!"
     return d_emb, embedder, cove_layer
 
@@ -597,7 +626,7 @@ def build_task_specific_modules(task, model, d_sent, d_emb, vocab, embedder, arg
         decoder, hid2voc = build_decoder(task, d_sent, vocab, embedder, args)
         setattr(model, "%s_decoder" % task.name, decoder)
         setattr(model, "%s_hid2voc" % task.name, hid2voc)
-    elif isinstance(task, (MultiRCTask, ReCoRDTask)):
+    elif isinstance(task, (MuSeRCTask, RuCoSTask)):
         module = build_qa_module(task, d_sent, model.project_before_pooling, task_params)
         setattr(model, "%s_mdl" % task.name, module)
     else:
@@ -729,12 +758,12 @@ def build_pair_sentence_module(task, d_inp, model, params):
     if model.uses_pair_embedding:
         # BERT/XLNet handle pair tasks by concatenating the inputs and classifying the joined
         # sequence, so we use a single sentence classifier
-        if isinstance(task, WiCTask):
+        if isinstance(task, RUSSETask):
             d_out *= 3  # also pass the two contextual word representations
         classifier = Classifier.from_params(d_out, n_classes, params)
         module = SingleClassifier(pooler, classifier)
     else:
-        d_out = d_out + d_inp if isinstance(task, WiCTask) else d_out
+        d_out = d_out + d_inp if isinstance(task, RUSSETask) else d_out
         classifier = Classifier.from_params(4 * d_out, n_classes, params)
         module = PairClassifier(pooler, classifier, pair_attn)
     return module
@@ -877,7 +906,7 @@ class MultiTaskModel(nn.Module):
             )
         elif isinstance(task, SequenceGenerationTask):
             out = self._seq_gen_forward(batch, task, predict)
-        elif isinstance(task, (MultiRCTask, ReCoRDTask)):
+        elif isinstance(task, (MuSeRCTask, RuCoSTask)):
             out = self._multiple_choice_reading_comprehension_forward(batch, task, predict)
         elif isinstance(task, SpanClassificationTask):
             out = self._span_forward(batch, task, predict)
@@ -895,7 +924,9 @@ class MultiTaskModel(nn.Module):
         """ Get task-specific classifier, as set in build_module(). """
         # TODO: replace this logic with task._classifier_name?
         task_params = self._get_task_params(task.name)
-        use_clf = task_params["use_classifier"]
+                
+        #use_clf = task_params["use_classifier"]
+        use_clf = task_params["use_classifier"].replace('rte-superglue','terra').replace('lidirus','terra')
         if use_clf in [None, "", "none"]:
             use_clf = task.name  # default if not set
         return getattr(self, "%s_mdl" % use_clf)
@@ -1006,14 +1037,14 @@ class MultiTaskModel(nn.Module):
         elif self.uses_pair_embedding:
             sent, mask = self.sent_encoder(batch["inputs"], task)
             # special case for WiC b/c we want to add representations of particular tokens
-            if isinstance(task, WiCTask):
+            if isinstance(task, RUSSETask):
                 logits = classifier(sent, mask, [batch["idx1"], batch["idx2"]])
             else:
                 logits = classifier(sent, mask)
         else:
             sent1, mask1 = self.sent_encoder(batch["input1"], task)
             sent2, mask2 = self.sent_encoder(batch["input2"], task)
-            if isinstance(task, WiCTask):
+            if isinstance(task, RUSSETask):
                 logits = classifier(sent1, sent2, mask1, mask2, [batch["idx1"]], [batch["idx2"]])
             else:
                 logits = classifier(sent1, sent2, mask1, mask2)
@@ -1262,7 +1293,7 @@ class MultiTaskModel(nn.Module):
             out["loss"] = format_output(F.cross_entropy(logits, batch["label"]), self._cuda_device)
 
         if predict:
-            if isinstance(task, ReCoRDTask):
+            if isinstance(task, RuCoSTask):
                 # For ReCoRD, we want the logits to make
                 # predictions across answer choices
                 # (which are spread across batches)

@@ -30,10 +30,9 @@ from jiant.tasks.registry import register_task
 from ..utils.retokenize import space_tokenize_with_spans, find_space_token_span, get_aligner_fn
 
 
-@register_task("multirc", rel_path="MultiRC/")
-class MultiRCTask(Task):
-    """Multi-sentence Reading Comprehension task
-    See paper at https://cogcomp.org/multirc/ """
+@register_task("muserc", rel_path="MuSeRC/")
+class MuSeRCTask(Task):
+
 
     def __init__(self, path, max_seq_len, name, **kw):
         super().__init__(name, **kw)
@@ -69,10 +68,10 @@ class MultiRCTask(Task):
             for example in data_fh:
                 ex = json.loads(example)
 
-                assert (
-                    "version" in ex and ex["version"] == 1.1
-                ), "MultiRC version is invalid! Example indices are likely incorrect. "
-                "Please re-download the data from super.gluebenchmark.com ."
+                #assert (
+                #    "version" in ex and ex["version"] == 1.1
+                #), "MultiRC version is invalid! Example indices are likely incorrect. "
+                #"Please re-download the data from super.gluebenchmark.com ."
 
                 # each example has a passage field -> (text, questions)
                 # text is the passage, which requires some preprocessing
@@ -198,10 +197,8 @@ class MultiRCTask(Task):
         return {"ans_f1": ans_f1, "qst_f1": qst_f1, "em": em, "avg": (ans_f1 + em) / 2}
 
 
-@register_task("record", rel_path="ReCoRD/")
-class ReCoRDTask(Task):
-    """Reading Comprehension with commonsense Reasoning Dataset
-    See paper at https://sheng-z.github.io/ReCoRD-explorer """
+@register_task("rucos", rel_path="RuCoS/")
+class RuCoSTask(Task):
 
     def __init__(self, path, max_seq_len, name, **kw):
         super().__init__(name, **kw)

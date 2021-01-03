@@ -7,6 +7,7 @@ import codecs
 import csv
 import json
 import numpy as np
+import logging as log
 import pandas as pd
 from allennlp.data import vocabulary
 
@@ -35,8 +36,10 @@ def load_span_data(tokenizer_name, file_name, label_fn=None, has_labels=True):
     Returns:
         List of dictionaries of the aligned spans and tokenized text.
     """
-    rows = pd.read_json(file_name, lines=True)
+    rows = pd.read_json(file_name, lines=True, encoding = 'utf-8')
+    #rows.text = rows.text.apply(lambda x: x.encode('utf-8').decode('utf-8'))
     # realign spans
+    log.info(file_name)
     rows = rows.apply(lambda x: realign_spans(x, tokenizer_name), axis=1)
     if has_labels is False:
         rows["label"] = 0

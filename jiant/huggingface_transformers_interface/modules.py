@@ -108,13 +108,25 @@ class HuggingfaceTransformersEmbedderModule(nn.Module):
         # map AllenNLP @@UNKNOWN@@ to _unk_id in specific transformer vocab
         valid_mask = (ids > 1).long()
         # shift ordinary indexes by 2 to match pretrained token embedding indexes
-        if self._unk_id is not None:
-            ids = (ids - 2) * valid_mask + self._pad_id * pad_mask + self._unk_id * unk_mask
-        else:
-            ids = (ids - 2) * valid_mask + self._pad_id * pad_mask
-            assert (
-                unk_mask == 0
-            ).all(), "out-of-vocabulary token found in the input, but _unk_id of transformers model is not specified"
+        try:
+            if self._unk_id is not None:
+                ids = (ids - 2) * valid_mask + self._pad_id * pad_mask + self._unk_id * unk_mask
+            else:
+                ids = (ids - 2) * valid_mask + self._pad_id * pad_mask
+                assert (
+                    unk_mask == 0
+                ).all(), "out-of-vocabulary token found in the input, but _unk_id of transformers model is not specified"
+        except:
+            self._pad_id = 0
+            self._unk_id = 1
+            if self._unk_id is not None:
+                ids = (ids - 2) * valid_mask + self._pad_id * pad_mask + self._unk_id * unk_mask
+            else:
+                ids = (ids - 2) * valid_mask + self._pad_id * pad_mask
+                assert (
+                    unk_mask == 0
+                ).all(), "out-of-vocabulary token found in the input, but _unk_id of transformers model is not specified"
+            
         if self.max_pos is not None:
             assert (
                 ids.size()[-1] <= self.max_pos
@@ -359,6 +371,60 @@ class RobertaEmbedderModule(HuggingfaceTransformersEmbedderModule):
         )
         lm_head = model_with_lm_head.lm_head
         lm_head.predictions.decoder.weight = self.model.embeddings.word_embeddings.weight
+        return nn.Sequential(lm_head, nn.LogSoftmax(dim=-1))
+
+class XLMRobertaEmbedderModule(HuggingfaceTransformersEmbedderModule):
+    """ Wrapper for RoBERTa module to fit into jiant APIs.
+    Check HuggingfaceTransformersEmbedderModule for function definitions """
+
+    def __init__(self, args):
+        super(XLMRobertaEmbedderModule, self).__init__(args)
+
+        self.model = transformers.XLMRobertaModel.from_pretrained(
+            args.input_module, cache_dir=self.cache_dir, output_hidden_states=True
+        )
+        #self.model.cuda()
+        self.max_pos = self.model.config.max_position_embeddings
+
+        self.tokenizer = transformers.XLMRobertaTokenizer.from_pretrained(
+            args.input_module, cache_dir=self.cache_dir
+        )  # TODO: Speed things up slightly by reusing the previously-loaded tokenizer.
+        self._sep_id = self.tokenizer.convert_tokens_to_ids("</s>")
+        self._cls_id = self.tokenizer.convert_tokens_to_ids("<s>")
+        self._pad_id = self.tokenizer.convert_tokens_to_ids("<pad>")
+        self._unk_id = self.tokenizer.convert_tokens_to_ids("<unk>")
+
+        self.parameter_setup(args)
+
+    @staticmethod
+    def apply_boundary_tokens(s1, s2=None, get_offset=False):
+        # RoBERTa-style boundary token padding on string token sequences
+        if s2:
+            s = ["<s>"] + s1 + ["</s>", "</s>"] + s2 + ["</s>"]
+            if get_offset:
+                return s, 1, len(s1) + 3
+        else:
+            s = ["<s>"] + s1 + ["</s>"]
+            if get_offset:
+                return s, 1
+        return s
+
+    def forward(self, sent: Dict[str, torch.LongTensor], task_name: str = "") -> torch.FloatTensor:
+        ids, input_mask = self.correct_sent_indexing(sent)
+        hidden_states, lex_seq = [], None
+        if self.output_mode not in ["none", "top"]:
+            lex_seq = self.model.embeddings.word_embeddings(ids)
+            lex_seq = self.model.embeddings.LayerNorm(lex_seq)
+        if self.output_mode != "only":
+             _, output_pooled_vec, hidden_states = self.model(ids)
+        return self.prepare_output(lex_seq, hidden_states, input_mask)
+
+    def get_pretrained_lm_head(self):
+        model_with_lm_head = transformers.XLMRobertaForMaskedLM.from_pretrained(
+            self.input_module, cache_dir=self.cache_dir
+        )
+        lm_head = model_with_lm_head.pred_layer
+        lm_head.proj.weight = self.model.embeddings.weight
         return nn.Sequential(lm_head, nn.LogSoftmax(dim=-1))
 
 
@@ -682,7 +748,7 @@ class XLMEmbedderModule(HuggingfaceTransformersEmbedderModule):
 
     def __init__(self, args):
         super(XLMEmbedderModule, self).__init__(args)
-
+        #self.model = transformers.XLMWithLMHeadModel.from_pretrained(
         self.model = transformers.XLMModel.from_pretrained(
             args.input_module, cache_dir=self.cache_dir, output_hidden_states=True
         )  # TODO: Speed things up slightly by reusing the previously-loaded tokenizer.
@@ -714,6 +780,61 @@ class XLMEmbedderModule(HuggingfaceTransformersEmbedderModule):
         hidden_states, lex_seq = [], None
         if self.output_mode not in ["none", "top"]:
             lex_seq = self.model.embeddings(ids)
+            #lex_seq = self.model.embeddings.word_embeddings(ids)
+            #lex_seq = self.model.embeddings.LayerNorm(lex_seq)
+        if self.output_mode != "only":
+            _, hidden_states = self.model(ids)
+        return self.prepare_output(lex_seq, hidden_states, input_mask)
+
+    def get_pretrained_lm_head(self):
+        model_with_lm_head = transformers.XLMWithLMHeadModel.from_pretrained(
+            self.input_module, cache_dir=self.cache_dir
+        )
+        lm_head = model_with_lm_head.pred_layer
+        lm_head.proj.weight = self.model.embeddings.weight
+        return nn.Sequential(lm_head, nn.LogSoftmax(dim=-1))
+
+    
+class XLMMLMEmbedderModule(HuggingfaceTransformersEmbedderModule):
+    """ Wrapper for XLM module to fit into jiant APIs.
+    Check HuggingfaceTransformersEmbedderModule for function definitions """
+
+    def __init__(self, args):
+        super(XLMMLMEmbedderModule, self).__init__(args)
+        self.model = transformers.XLMWithLMHeadModel.from_pretrained(
+        #self.model = transformers.XLMModel.from_pretrained(
+            args.input_module, cache_dir=self.cache_dir, output_hidden_states=True
+        )  # TODO: Speed things up slightly by reusing the previously-loaded tokenizer.
+        self.max_pos = self.model.config.max_position_embeddings
+
+        self.tokenizer = transformers.XLMTokenizer.from_pretrained(
+            args.input_module, cache_dir=self.cache_dir
+        )
+        self._unk_id = self.tokenizer.convert_tokens_to_ids("<unk>")
+        self._pad_id = self.tokenizer.convert_tokens_to_ids("<pad>")
+
+        self.parameter_setup(args)
+
+    @staticmethod
+    def apply_boundary_tokens(s1, s2=None, get_offset=False):
+        # XLM-style boundary token marking on string token sequences
+        if s2:
+            s = ["</s>"] + s1 + ["</s>"] + s2 + ["</s>"]
+            if get_offset:
+                return s, 1, len(s1) + 2
+        else:
+            s = ["</s>"] + s1 + ["</s>"]
+            if get_offset:
+                return s, 1, len(s1) + 1
+        return s
+
+    def forward(self, sent: Dict[str, torch.LongTensor], task_name: str = "") -> torch.FloatTensor:
+        ids, input_mask = self.correct_sent_indexing(sent)
+        hidden_states, lex_seq = [], None
+        if self.output_mode not in ["none", "top"]:
+            lex_seq = self.model.embeddings(ids)
+            #lex_seq = self.model.embeddings.word_embeddings(ids)
+            #lex_seq = self.model.embeddings.LayerNorm(lex_seq)
         if self.output_mode != "only":
             _, hidden_states = self.model(ids)
         return self.prepare_output(lex_seq, hidden_states, input_mask)
